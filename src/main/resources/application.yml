@@ -1,0 +1,14 @@
+spring:
+  application:
+    name: reservation
+  profiles:
+    # 환경변수 SPRING_PROFILES_ACTIVE로 덮어쓸 수 있음 (운영: prod)
+    active: ${SPRING_PROFILES_ACTIVE:local}
+  jpa:
+    open-in-view: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health

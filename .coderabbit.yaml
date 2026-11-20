@@ -1,0 +1,35 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: "ko-KR"
+
+reviews:
+  profile: "chill"
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+
+  auto_review:
+    enabled: true
+    drafts: false
+    # 기본 브랜치(main) 외에 develop으로 향하는 PR도 자동 리뷰
+    base_branches:
+      - "develop"
+    ignore_title_keywords:
+      - "WIP"
+
+  path_instructions:
+    - path: "src/main/java/**"
+      instructions: |
+        팀 컨벤션 기준으로 리뷰해주세요.
+        - API 요청/응답 DTO를 분리하고 엔티티를 API에 직접 노출하지 않는지 확인
+        - JPA 엔티티에 @Data, 무분별한 setter를 쓰지 않고 의미 있는 상태 변경 메서드를 쓰는지 확인
+        - 요청 형식은 @Valid로, 비즈니스 조건은 Service/도메인에서 검증하는지 확인
+        - @Transactional 범위, 같은 객체 내부 호출로 트랜잭션이 무시되는 경우, N+1 가능성 확인
+        - 예외는 @RestControllerAdvice로 일관되게 처리하고, 스택 트레이스·내부 정보를 응답에 노출하지 않는지 확인
+        - 비밀번호·토큰·개인정보를 로그나 코드에 남기지 않는지 확인
+        - 동시성 이슈(중복 예약, 중복 대기열 등록, 오버부킹) 가능성 확인
+    - path: "src/test/**"
+      instructions: |
+        테스트가 대상 코드의 패키지 구조를 따르는지, 테스트 이름이 의도를 드러내는지 확인해주세요.
+
+chat:
+  auto_reply: true
