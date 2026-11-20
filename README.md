@@ -85,6 +85,7 @@ Spring Boot는 `.env` 파일을 자동으로 읽지 않습니다. 변수가 설�
 ```bash
 # macOS / Linux / Git Bash
 cp .env.example .env
+# .env를 열어 DB_USERNAME과 DB_PASSWORD 값을 입력합니다.
 set -a
 source .env
 set +a
