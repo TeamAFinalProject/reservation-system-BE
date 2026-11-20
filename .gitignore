@@ -36,8 +36,8 @@ out/
 ### VS Code ###
 .vscode/
 
-.env.example
-.env.example
+.env
+.env.*
 !.env.example
 application-secret*.yml
 application-secret*.yaml
