@@ -1,0 +1,56 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadBookingService",
+      "Effect": "Allow",
+      "Action": "ecs:DescribeServices",
+      "Resource": "arn:aws:ecs:ap-northeast-2:109729968560:service/teama-booking-mvp/teama-booking-mvp"
+    },
+    {
+      "Sid": "ReadTaskDefinition",
+      "Effect": "Allow",
+      "Action": "ecs:DescribeTaskDefinition",
+      "Resource": "*"
+    },
+    {
+      "Sid": "RegisterBookingFargateRevision",
+      "Effect": "Allow",
+      "Action": "ecs:RegisterTaskDefinition",
+      "Resource": "arn:aws:ecs:ap-northeast-2:109729968560:task-definition/teama-booking-mvp:*",
+      "Condition": {
+        "ForAllValues:StringEquals": {
+          "ecs:compute-compatibility": "FARGATE"
+        },
+        "Null": {
+          "ecs:compute-compatibility": "false"
+        }
+      }
+    },
+    {
+      "Sid": "DeployBookingRevision",
+      "Effect": "Allow",
+      "Action": "ecs:UpdateService",
+      "Resource": "arn:aws:ecs:ap-northeast-2:109729968560:service/teama-booking-mvp/teama-booking-mvp",
+      "Condition": {
+        "ArnLike": {
+          "ecs:task-definition": "arn:aws:ecs:ap-northeast-2:109729968560:task-definition/teama-booking-mvp:*"
+        },
+        "StringEquals": {
+          "aws:ResourceTag/DeploymentOwner": "github-actions"
+        }
+      }
+    },
+    {
+      "Sid": "PassBookingExecutionRole",
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": "arn:aws:iam::109729968560:role/teama-ecsTaskExecutionRole",
+      "Condition": {
+        "StringEquals": {
+          "iam:PassedToService": "ecs-tasks.amazonaws.com"
+        }
+      }
+    }
+  ]
+}
