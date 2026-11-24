@@ -53,23 +53,8 @@ variable "task_security_group_id" {
 
 variable "manage_vpc_endpoints" {
   type        = bool
-  description = "Create the AWS service endpoints. Disable only when task egress is provided separately."
+  description = "Create the AWS service endpoints and their dedicated security group. Disable only when task egress is provided separately."
   default     = true
-}
-
-variable "endpoint_security_group_id" {
-  type        = string
-  description = "Existing security group that permits HTTPS from the task security group."
-  default     = null
-
-  validation {
-    condition = !var.manage_vpc_endpoints || (
-      can(regex("^sg-[0-9a-f]+$", var.endpoint_security_group_id)) &&
-      var.endpoint_security_group_id != var.alb_security_group_id &&
-      var.endpoint_security_group_id != var.task_security_group_id
-    )
-    error_message = "Managed endpoints require a dedicated existing security group ID."
-  }
 }
 
 variable "execution_role_name" {

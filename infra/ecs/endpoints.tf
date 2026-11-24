@@ -47,6 +47,21 @@ resource "aws_vpc_endpoint" "s3" {
   })
 }
 
+resource "aws_security_group" "endpoint" {
+  count       = var.manage_vpc_endpoints ? 1 : 0
+  name        = "${local.name}-endpoint"
+  description = "HTTPS from Booking ECS tasks to interface endpoints"
+  vpc_id      = data.aws_vpc.existing.id
+
+  ingress {
+    description     = "HTTPS from Booking ECS tasks"
+    protocol        = "tcp"
+    from_port       = 443
+    to_port         = 443
+    security_groups = [data.aws_security_group.existing["task"].id]
+  }
+}
+
 resource "aws_vpc_endpoint" "interface" {
   for_each            = var.manage_vpc_endpoints ? local.interface_services : toset([])
   vpc_id              = data.aws_vpc.existing.id
@@ -54,7 +69,7 @@ resource "aws_vpc_endpoint" "interface" {
   vpc_endpoint_type   = "Interface"
   private_dns_enabled = true
   subnet_ids          = values(data.aws_subnet.app)[*].id
-  security_group_ids  = [data.aws_security_group.existing["endpoint"].id]
+  security_group_ids  = [aws_security_group.endpoint[0].id]
 
   lifecycle {
     precondition {

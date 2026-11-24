@@ -21,10 +21,10 @@ data "aws_subnet" "app" {
 }
 
 data "aws_security_group" "existing" {
-  for_each = merge({
+  for_each = {
     alb  = var.alb_security_group_id
     task = var.task_security_group_id
-  }, var.manage_vpc_endpoints ? { endpoint = var.endpoint_security_group_id } : {})
+  }
 
   id     = each.value
   vpc_id = data.aws_vpc.existing.id

@@ -10,10 +10,9 @@ execution_role_name     = "teama-ecsTaskExecutionRole"
 booking_repository_name = "teama/booking"
 booking_image_digest    = "<existing-linux-amd64-image-digest>"
 
-alb_security_group_id      = "<existing-alb-sg-id>"
-task_security_group_id     = "<existing-ecs-task-sg-id>"
-endpoint_security_group_id = "<existing-endpoint-sg-id>"
-manage_vpc_endpoints       = true
+alb_security_group_id  = "<existing-alb-sg-id>"
+task_security_group_id = "<existing-ecs-task-sg-id>"
+manage_vpc_endpoints   = true
 
 desired_count        = 0
 db_secret_value_from = {}
