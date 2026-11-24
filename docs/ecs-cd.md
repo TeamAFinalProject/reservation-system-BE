@@ -10,7 +10,13 @@
 4. 서비스가 `ACTIVE` 상태이고 Terraform이 `DeploymentOwner=github-actions` 태그를 설정했으며 `desiredCount > 0`임을 확인한 뒤 저장소 변수 `ECS_DEPLOY_ENABLED=true`로 활성화합니다. 변수가 없거나 값이 다르면 ECR Push까지 진행합니다. 활성화 후 대상 서비스나 조건이 누락되면 CD가 리비전 등록 전에 실패합니다.
 5. 다음 `develop` CI 성공 또는 `ECR Push` 수동 실행으로 검증합니다. CD는 서비스가 가리키는 Task Definition에서 `booking` 이미지 digest만 바꾸고, 새 리비전이 PRIMARY 및 COMPLETED 상태이고 실행 태스크 수가 desired count와 일치할 때 성공합니다. ECS 롤백으로 이전 리비전이 안정화되면 해당 실행은 실패로 표시됩니다.
 
-GitHub Actions는 배포를 직렬화하고 `queue: max`로 대기 중인 배포를 최대 100개까지 보존합니다. 이전 커밋의 이미지 빌드가 늦게 끝나도 이미 대기 중인 최신 배포를 교체하지 않습니다. 각 배포는 실행 시 `develop`의 최신 커밋을 확인합니다. Terraform 서비스 업데이트나 수동 배포 전에는 활성화 변수를 끄고 진행 중인 배포가 끝났는지 확인합니다. Terraform은 네트워크, 서비스 및 초기 Task Definition을 관리하고, 서비스의 활성 `task_definition`은 `ignore_changes` 대상으로 둡니다. Terraform의 기준 리비전은 `skip_destroy`로 보존합니다. CPU, 역할, 시크릿 등을 변경할 때는 CD를 중지한 상태에서 새 기준 리비전을 서비스에 반영한 뒤 CD를 재개합니다. 런타임 헬스와 업무 API 검증은 실제 서비스 환경에서 별도로 수행합니다.
+GitHub Actions는 배포를 직렬화하고 `queue: max`로 대기 중인 배포를 최대 100개까지 보존합니다. 이전 커밋의 이미지 빌드가 늦게 끝나도 이미 대기 중인 최신 배포를 교체하지 않습니다. 각 배포는 실행 시 `develop`의 최신 커밋을 확인합니다. Terraform은 네트워크, 서비스 및 초기 Task Definition을 관리하고, 서비스의 활성 `task_definition`은 `ignore_changes` 대상으로 둡니다. Terraform의 기준 리비전은 `skip_destroy`로 보존합니다. CPU, 역할, 시크릿 등을 변경할 때는 CD를 중지한 상태에서 새 기준 리비전을 서비스에 반영한 뒤 CD를 재개합니다. 런타임 헬스와 업무 API 검증은 실제 서비스 환경에서 별도로 수행합니다.
+
+## 유지보수 중 배포 중지
+
+1. 저장소 변수 `ECS_DEPLOY_ENABLED`를 `false`로 설정합니다. 이미 대기열에 들어간 작업은 자동으로 취소되지 않습니다.
+2. GitHub Actions의 **ECR Push**에서 아직 대기 중이거나 환경 승인을 기다리는 ECS 배포가 포함된 실행을 취소합니다. 이미 ECS 갱신을 시작한 실행은 완료될 때까지 기다립니다. 실행을 취소했더라도 AWS에서 이미 시작된 롤아웃은 계속될 수 있으므로 ECS 서비스가 안정 상태인지 확인합니다.
+3. 대기·승인 대기·진행 중인 ECS 배포가 모두 정리된 뒤 Terraform 서비스 업데이트나 수동 배포를 진행합니다. 변경한 기준 리비전과 서비스 상태를 확인한 뒤 CD를 다시 켭니다.
 
 ## AWS OIDC 역할
 

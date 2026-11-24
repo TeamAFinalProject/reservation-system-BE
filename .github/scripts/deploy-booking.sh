@@ -46,12 +46,14 @@ baseline="$(jq -er --arg cluster "$cluster" --arg service "$service" '
 request="$(aws ecs describe-task-definition --task-definition "$baseline" |
   jq -ce --arg image "$IMAGE" '
     .taskDefinition
-    | select(.status == "ACTIVE" and .runtimePlatform.cpuArchitecture == "X86_64"
-        and .runtimePlatform.operatingSystemFamily == "LINUX"
+    | select(.status == "ACTIVE"
+        and (.runtimePlatform.cpuArchitecture // "X86_64") == "X86_64"
+        and (.runtimePlatform.operatingSystemFamily // "LINUX") == "LINUX"
         and (.requiresCompatibilities | index("FARGATE")))
     | select(([.containerDefinitions[] | select(.name == "booking")] | length) == 1)
     | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities,
           .registeredAt, .registeredBy, .deregisteredAt)
+    | .runtimePlatform = {cpuArchitecture: "X86_64", operatingSystemFamily: "LINUX"}
     | (.containerDefinitions[] | select(.name == "booking").image) = $image
   ')" || fail "The active task definition is incompatible with the Booking image."
 
