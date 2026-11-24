@@ -59,7 +59,8 @@ resource "aws_ecs_task_definition" "booking" {
   cpu                      = "256"
   memory                   = "512"
   execution_role_arn       = data.aws_iam_role.execution.arn
-  skip_destroy             = true
+  # Record this flag in state before replacing an existing revision.
+  skip_destroy = true
 
   runtime_platform {
     operating_system_family = "LINUX"

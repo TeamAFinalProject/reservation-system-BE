@@ -124,3 +124,10 @@ MVP에는 **VPC Endpoint**를 기본값으로 선택했습니다. 현재 요구�
 Terraform은 ECS 서비스 생성과 최초 Task Definition을 담당합니다. 서비스 생성 후 GitHub Actions가 활성 리비전을 관리합니다. Terraform은 서비스의 `task_definition` 필드 변경을 무시하며, Terraform의 부트스트랩 리비전은 교체 또는 삭제 시에도 보존합니다. 스택 종료 시 참조가 끝난 리비전의 등록 해제는 별도 검토합니다.
 
 서비스를 기동할 준비와 GitHub Actions 역할 승인이 끝난 뒤에만 `enable_github_actions_deploy = true`를 설정합니다. 이 값은 서비스에 `DeploymentOwner=github-actions` 태그를 부여합니다. CPU, 메모리, 역할, 시크릿 같은 Task Definition 설정을 바꿀 때는 GitHub CD를 먼저 멈추고 새 기준 리비전을 서비스에 반영하고 검증한 뒤 CD를 재개합니다. Terraform이 등록하는 새 부트스트랩 리비전은 서비스에 자동으로 반영되지 않습니다.
+
+
+### 기존 Task Definition에 리비전 보존 설정 적용
+
+기존 리비전이 Terraform State에 있다면 먼저 현재 이미지, CPU, 메모리, 역할, 시크릿 입력을 유지한 상태에서 Plan을 확인합니다. Task Definition의 `skip_destroy = true`가 인플레이스 변경이고 리비전 교체·삭제가 없을 때에만 승인된 최초 Apply를 실행합니다. 기존 리비전을 교체할 때 Provider는 이전 State의 값을 사용하므로 교체를 같은 Apply에 포함하면 기존 리비전이 등록 해제될 수 있습니다.
+
+최초 Apply 후 동일한 리비전과 `skip_destroy = true`가 State에 기록됐는지 확인하고, CPU 등 교체가 필요한 변경은 별도 Plan과 승인된 Apply로 진행합니다. 스택을 처음 생성하는 경우에는 최초 리비전에 보존 설정이 함께 기록됩니다.
