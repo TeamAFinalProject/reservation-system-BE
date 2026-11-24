@@ -14,6 +14,7 @@ terraform -chdir=infra/ecs validate
 ```
 
 초기화는 Provider 다운로드를 위해 Terraform Registry에 접근합니다. 위 단계에는 AWS 자격 증명이 필요하지 않습니다.
+GitHub Actions의 Terraform Validate 워크플로도 `infra/ecs` 변경이 있는 PR에서 같은 검사를 실행합니다.
 
 ## 기존 인프라 읽기 전용 조사
 
@@ -32,7 +33,7 @@ aws ec2 describe-vpc-attribute --vpc-id "$vpc_id" --attribute enableDnsHostnames
 aws ec2 describe-subnets --filters "Name=vpc-id,Values=$vpc_id" \
   --query 'Subnets[].{Name:Tags[?Key==`Name`].Value|[0],ID:SubnetId,AZ:AvailabilityZone,CIDR:CidrBlock,FreeIPv4:AvailableIpAddressCount}'
 aws ec2 describe-security-groups --filters "Name=vpc-id,Values=$vpc_id" \
-  --query 'SecurityGroups[].{Name:GroupName,ID:GroupId,Ingress:IpPermissions,Egress:IpPermissions}'
+  --query 'SecurityGroups[].{Name:GroupName,ID:GroupId,Ingress:IpPermissions,Egress:IpPermissionsEgress}'
 aws ec2 describe-route-tables --filters "Name=vpc-id,Values=$vpc_id" \
   --query 'RouteTables[].{ID:RouteTableId,Associations:Associations[].{Subnet:SubnetId,Main:Main},Routes:Routes}'
 aws ec2 describe-vpc-endpoints --filters "Name=vpc-id,Values=$vpc_id" \

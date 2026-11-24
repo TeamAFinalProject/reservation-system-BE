@@ -3,8 +3,8 @@ variable "environment" {
   description = "Environment suffix for the resources owned by this stack."
 
   validation {
-    condition     = can(regex("^[a-z0-9][a-z0-9-]{0,11}$", var.environment))
-    error_message = "Use 1–12 lowercase alphanumeric characters or hyphens, starting with an alphanumeric character."
+    condition     = can(regex("^[a-z0-9]([a-z0-9-]{0,10}[a-z0-9])?$", var.environment))
+    error_message = "Use 1–12 lowercase letters, digits, or hyphens, starting and ending with a letter or digit."
   }
 }
 
