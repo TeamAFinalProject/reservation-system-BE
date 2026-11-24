@@ -73,7 +73,13 @@ resource "aws_ecs_task_definition" "booking" {
     essential = true
 
     portMappings = [{ containerPort = local.container_port, protocol = "tcp" }]
-    environment  = [{ name = "SPRING_PROFILES_ACTIVE", value = "prod" }]
+    environment = concat(
+      [{ name = "SPRING_PROFILES_ACTIVE", value = var.spring_profile }],
+      var.spring_profile == "smoke" ? [{
+        name  = "JAVA_TOOL_OPTIONS"
+        value = "-XX:+UseSerialGC -XX:TieredStopAtLevel=1 -XX:ActiveProcessorCount=1"
+      }] : []
+    )
     secrets = [
       for name, selector in var.db_secret_value_from : { name = name, valueFrom = selector }
     ]
@@ -130,8 +136,8 @@ resource "aws_ecs_service" "booking" {
     }
 
     precondition {
-      condition     = var.desired_count == 0 || length(var.db_secret_value_from) == 3
-      error_message = "Configure all three database secret selectors before allowing the service to start tasks."
+      condition     = var.spring_profile == "smoke" || var.desired_count == 0 || length(var.db_secret_value_from) == 3
+      error_message = "Configure all three database secret selectors before starting prod tasks."
     }
   }
 }
