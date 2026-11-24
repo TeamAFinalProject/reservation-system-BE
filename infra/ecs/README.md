@@ -130,4 +130,4 @@ Terraform은 ECS 서비스 생성과 최초 Task Definition을 담당합니다. 
 
 기존 리비전이 Terraform State에 있다면 먼저 현재 이미지, CPU, 메모리, 역할, 시크릿 입력을 유지한 상태에서 Plan을 확인합니다. Task Definition의 `skip_destroy = true`가 인플레이스 변경이고 리비전 교체·삭제가 없을 때에만 승인된 최초 Apply를 실행합니다. 기존 리비전을 교체할 때 Provider는 이전 State의 값을 사용하므로 교체를 같은 Apply에 포함하면 기존 리비전이 등록 해제될 수 있습니다.
 
-최초 Apply 후 동일한 리비전과 `skip_destroy = true`가 State에 기록됐는지 확인하고, CPU 등 교체가 필요한 변경은 별도 Plan과 승인된 Apply로 진행합니다. 스택을 처음 생성하는 경우에는 최초 리비전에 보존 설정이 함께 기록됩니다.
+최초 Apply 후 동일한 리비전과 `skip_destroy = true`가 State에 기록됐는지 확인합니다. 이후 CD를 중지한 상태에서 ECS 서비스가 가리키는 활성 Task Definition의 `booking` 이미지 digest를 확인합니다. 현재 이미지를 유지하려면 그 digest를 `booking_image_digest`에 설정한 뒤 CPU 등 교체가 필요한 변경을 별도 Plan으로 검토합니다. Plan의 이미지가 활성 이미지와 일치하는지 확인한 뒤 승인된 Apply와 서비스 반영을 진행합니다. 스택을 처음 생성하는 경우에는 최초 리비전에 보존 설정이 함께 기록됩니다.
