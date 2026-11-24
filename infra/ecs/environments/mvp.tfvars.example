@@ -15,4 +15,5 @@ task_security_group_id = "<existing-ecs-task-sg-id>"
 manage_vpc_endpoints   = true
 
 desired_count        = 0
+spring_profile       = "prod"
 db_secret_value_from = {}

@@ -77,7 +77,7 @@ variable "booking_image_digest" {
 variable "desired_count" {
   type        = number
   default     = 0
-  description = "Keep tasks stopped until the image, database, and network are ready."
+  description = "Keep tasks stopped until the selected profile's image and dependencies are ready."
 
   validation {
     condition     = var.desired_count >= 0 && floor(var.desired_count) == var.desired_count
@@ -85,10 +85,26 @@ variable "desired_count" {
   }
 }
 
+variable "spring_profile" {
+  type        = string
+  default     = "prod"
+  description = "Spring Boot profile: prod for Booking, smoke for DB-free infrastructure checks."
+
+  validation {
+    condition     = contains(["prod", "smoke"], var.spring_profile)
+    error_message = "Select prod or smoke."
+  }
+}
+
 variable "db_secret_value_from" {
   type        = map(string)
   default     = {}
   description = "DB_URL, DB_USERNAME, and DB_PASSWORD as same-account Secrets Manager ARN selectors. Do not supply secret values."
+
+  validation {
+    condition     = var.spring_profile != "smoke" || length(var.db_secret_value_from) == 0
+    error_message = "The smoke profile must not receive database secret selectors."
+  }
 
   validation {
     condition = (length(var.db_secret_value_from) == 0 || toset(keys(var.db_secret_value_from)) == toset(["DB_URL", "DB_USERNAME", "DB_PASSWORD"])) && alltrue([
