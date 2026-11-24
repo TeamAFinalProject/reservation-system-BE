@@ -1,0 +1,49 @@
+name: AWS OIDC Check
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  verify:
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/develop' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check repository variables
+        shell: bash
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
+        run: |
+          for variable in AWS_REGION AWS_ROLE_ARN; do
+            if [[ -z "${!variable}" ]]; then
+              echo "::error::Set the $variable repository variable before running this workflow."
+              exit 1
+            fi
+          done
+
+      - name: Authenticate to AWS via OIDC
+        uses: aws-actions/configure-aws-credentials@v6.3.0
+        with:
+          aws-region: ${{ vars.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+
+      - name: Verify AWS caller account
+        shell: bash
+        env:
+          EXPECTED_AWS_ACCOUNT_ID: '109729968560'
+        run: |
+          if ! actual_account_id="$(aws sts get-caller-identity --query Account --output text --no-cli-pager)"; then
+            echo "::error::AWS STS GetCallerIdentity failed. Check the OIDC authentication step and the AWS CLI error above."
+            exit 1
+          fi
+
+          if [[ "$actual_account_id" != "$EXPECTED_AWS_ACCOUNT_ID" ]]; then
+            echo "::error::AWS account mismatch. Expected $EXPECTED_AWS_ACCOUNT_ID but got $actual_account_id."
+            exit 1
+          fi
+
+          echo "AWS OIDC authentication verified for account $actual_account_id."
