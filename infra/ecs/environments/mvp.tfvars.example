@@ -1,0 +1,18 @@
+environment    = "mvp"
+aws_region     = "ap-northeast-2"
+aws_account_id = "109729968560"
+vpc_id         = "vpc-01fddc91a0da8830d"
+
+alb_subnet_names = ["teama-private-alb-a", "teama-private-alb-c"]
+app_subnet_names = ["teama-private-app-a", "teama-private-app-c"]
+
+execution_role_name     = "teama-ecsTaskExecutionRole"
+booking_repository_name = "teama/booking"
+booking_image_digest    = "<existing-linux-amd64-image-digest>"
+
+alb_security_group_id  = "<existing-alb-sg-id>"
+task_security_group_id = "<existing-ecs-task-sg-id>"
+manage_vpc_endpoints   = true
+
+desired_count        = 0
+db_secret_value_from = {}
