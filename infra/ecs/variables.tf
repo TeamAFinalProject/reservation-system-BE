@@ -98,3 +98,9 @@ variable "db_secret_value_from" {
     error_message = "Supply all three database environment names with same-region, same-account Secrets Manager ARN selectors, or leave the map empty."
   }
 }
+
+variable "enable_github_actions_deploy" {
+  type        = bool
+  default     = false
+  description = "Advertise that the Booking ECS service is ready for GitHub Actions to deploy task revisions."
+}

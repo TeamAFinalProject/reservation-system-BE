@@ -59,6 +59,7 @@ resource "aws_ecs_task_definition" "booking" {
   cpu                      = "256"
   memory                   = "512"
   execution_role_arn       = data.aws_iam_role.execution.arn
+  skip_destroy             = true
 
   runtime_platform {
     operating_system_family = "LINUX"
@@ -94,6 +95,7 @@ resource "aws_ecs_service" "booking" {
   launch_type                       = "FARGATE"
   platform_version                  = "1.4.0"
   desired_count                     = var.desired_count
+  tags                              = var.enable_github_actions_deploy ? { DeploymentOwner = "github-actions" } : {}
   health_check_grace_period_seconds = 120
 
   deployment_minimum_healthy_percent = 100
@@ -119,6 +121,8 @@ resource "aws_ecs_service" "booking" {
   depends_on = [aws_lb_listener.http, aws_vpc_endpoint.s3, aws_vpc_endpoint.interface]
 
   lifecycle {
+    ignore_changes = [task_definition]
+
     precondition {
       condition     = toset(values(data.aws_subnet.app)[*].availability_zone_id) == toset(values(data.aws_subnet.alb)[*].availability_zone_id)
       error_message = "The app subnets must cover the same two Availability Zones as the ALB."

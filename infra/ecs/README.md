@@ -118,3 +118,9 @@ MVP에는 **VPC Endpoint**를 기본값으로 선택했습니다. 현재 요구�
 6. 승인된 별도 적용 작업에서는 계획의 삭제·교체와 대상 계정을 리뷰합니다. ALB 삭제 방지를 기본 활성화했습니다. 롤링 배포 중에 필요할 수 있는 Task Definition 교체와 로그·Endpoint 삭제는 별도로 검토합니다. NAT, CloudFront, RDS, Valkey는 별도 구성 대상입니다.
 
 [AWS ECR VPC Endpoint](https://docs.aws.amazon.com/AmazonECR/latest/userguide/vpc-endpoints.html) · [CloudFront VPC Origin](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-vpc-origins.html) · [VPC 요금](https://aws.amazon.com/vpc/pricing/) · [PrivateLink 요금](https://aws.amazon.com/privatelink/pricing/)
+
+## GitHub Actions 배포 소유권
+
+Terraform은 ECS 서비스 생성과 최초 Task Definition을 담당합니다. 서비스 생성 후 GitHub Actions가 활성 리비전을 관리합니다. Terraform은 서비스의 `task_definition` 필드 변경을 무시하며, Terraform의 부트스트랩 리비전은 교체 또는 삭제 시에도 보존합니다. 스택 종료 시 참조가 끝난 리비전의 등록 해제는 별도 검토합니다.
+
+서비스를 기동할 준비와 GitHub Actions 역할 승인이 끝난 뒤에만 `enable_github_actions_deploy = true`를 설정합니다. 이 값은 서비스에 `DeploymentOwner=github-actions` 태그를 부여합니다. CPU, 메모리, 역할, 시크릿 같은 Task Definition 설정을 바꿀 때는 GitHub CD를 먼저 멈추고 새 기준 리비전을 서비스에 반영하고 검증한 뒤 CD를 재개합니다. Terraform이 등록하는 새 부트스트랩 리비전은 서비스에 자동으로 반영되지 않습니다.
