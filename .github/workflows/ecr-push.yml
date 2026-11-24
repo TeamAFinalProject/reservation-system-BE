@@ -1,0 +1,66 @@
+name: ECR Push
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  push-booking:
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/develop' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      ECR_REPOSITORY: teama/booking
+      EXPECTED_AWS_ACCOUNT_ID: '109729968560'
+      IMAGE_TAG: ${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+
+    steps:
+      - name: Check repository variables
+        env:
+          AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
+        run: |
+          if [[ "$AWS_REGION" != ap-northeast-2 ]]; then
+            echo "::error::Set the AWS_REGION repository variable to ap-northeast-2."
+            exit 1
+          fi
+          if [[ -z "$AWS_ROLE_ARN" ]]; then
+            echo "::error::Set the AWS_ROLE_ARN repository variable."
+            exit 1
+          fi
+
+      - name: Check out code
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build Docker image
+        run: docker build --platform linux/amd64 --tag "reservation:$IMAGE_TAG" .
+
+      - name: Authenticate to AWS via OIDC
+        uses: aws-actions/configure-aws-credentials@v6.3.0
+        with:
+          aws-region: ${{ vars.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          allowed-account-ids: ${{ env.EXPECTED_AWS_ACCOUNT_ID }}
+
+      - name: Log in to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2.2.0
+
+      - name: Push Docker image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          expected_registry="$EXPECTED_AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
+          if [[ "$ECR_REGISTRY" != "$expected_registry" ]]; then
+            echo "::error::The ECR login returned an unexpected registry."
+            exit 1
+          fi
+
+          image="$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+          docker tag "reservation:$IMAGE_TAG" "$image"
+          docker push "$image"
