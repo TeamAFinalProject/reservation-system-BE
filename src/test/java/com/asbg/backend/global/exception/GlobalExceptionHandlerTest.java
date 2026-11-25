@@ -25,6 +25,7 @@ import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.http.HttpStatus.NOT_ACCEPTABLE;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
+import static org.springframework.http.MediaType.APPLICATION_XML;
 import static org.springframework.http.MediaType.TEXT_PLAIN;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -86,6 +87,8 @@ class GlobalExceptionHandlerTest {
         expectFailure(mvc.perform(post("/sample").contentType(TEXT_PLAIN).content("plain")), 415, "COMMON_415");
         expectFailure(mvc.perform(get("/sample")), 405, "COMMON_405").andExpect(header().string("Allow", "POST"));
         expectFailure(mvc.perform(get("/missing")), 404, "COMMON_404");
+        expectFailure(mvc.perform(get("/sample/count").param("count", "1").accept(APPLICATION_XML)),
+                406, "COMMON_406").andExpect(content().contentType(APPLICATION_JSON));
         expectFailure(mvc.perform(get("/sample/status")), 406, "COMMON_406")
                 .andExpect(content().string(not(containsString("internal detail"))));
     }

@@ -7,6 +7,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatusCode;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.method.ParameterErrors;
@@ -28,7 +29,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<BaseResponse<Void>> handleBusinessException(BusinessException exception) {
         BaseErrorCode errorCode = exception.errorCode();
-        return ResponseEntity.status(errorCode.status()).body(BaseResponse.failure(errorCode, null));
+        return failure(errorCode, HttpHeaders.EMPTY);
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -92,7 +93,8 @@ public class GlobalExceptionHandler {
 
     private ResponseEntity<BaseResponse<FieldErrorResponse>> validationFailure(List<FieldError> errors) {
         ErrorCode code = ErrorCode.INVALID_INPUT_VALUE;
-        return ResponseEntity.status(code.status()).body(BaseResponse.failure(code, new FieldErrorResponse(errors)));
+        return ResponseEntity.status(code.status()).contentType(MediaType.APPLICATION_JSON)
+                .body(BaseResponse.failure(code, new FieldErrorResponse(errors)));
     }
 
     private FieldError fieldError(String field, String validationCode) {
@@ -102,7 +104,8 @@ public class GlobalExceptionHandler {
     }
 
     private ResponseEntity<BaseResponse<Void>> failure(BaseErrorCode code, HttpHeaders headers) {
-        return ResponseEntity.status(code.status()).headers(headers).body(BaseResponse.failure(code, null));
+        return ResponseEntity.status(code.status()).headers(headers).contentType(MediaType.APPLICATION_JSON)
+                .body(BaseResponse.failure(code, null));
     }
 
     private void logServerError(Exception exception) {
