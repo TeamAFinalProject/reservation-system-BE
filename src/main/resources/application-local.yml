@@ -6,7 +6,7 @@ spring:
     password: ${DB_PASSWORD}
   jpa:
     hibernate:
-      ddl-auto: none # 스키마 변경은 Flyway 마이그레이션으로 관리
+      ddl-auto: update # 로컬 개발 전용
     properties:
       hibernate:
         format_sql: true
