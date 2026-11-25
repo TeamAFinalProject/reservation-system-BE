@@ -108,6 +108,8 @@ $env:DB_PASSWORD = "비밀번호"
 ./gradlew bootRun
 ```
 
+local과 prod에서 Hibernate는 스키마를 자동 변경하지 않습니다. Flyway는 local에서 기본 활성화되며 운영용 마이그레이션은 `src/main/resources/db/migration`에 작성합니다. 운영 환경은 대상 스키마와 마이그레이션 이력을 검토한 뒤 `FLYWAY_ENABLED=true`로 활성화합니다. 비어 있지 않은 기존 스키마에 Flyway 이력 테이블이 없으면 자동 기준 설정 없이 마이그레이션이 중단됩니다.
+
 ### 4. 빌드 및 테스트
 
 테스트는 `test` 프로필(`src/test/resources/application-test.yml`)로 실행되며, 외부 DB 없이 H2 인메모리 DB를 사용합니다. 테스트 클래스에는 `@ActiveProfiles("test")`를 붙입니다.
