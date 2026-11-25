@@ -116,6 +116,41 @@ $env:DB_PASSWORD = "비밀번호"
 ./gradlew build
 ```
 
+## 공통 API 응답과 보안
+
+### 응답과 입력 검증
+
+컨트롤러에서 `BaseResponse.success(data)`로 성공 본문을 만들고, 필요한 경우 `ResponseEntity`로 HTTP 상태를 선택합니다. 성공 코드는 `COMMON_SUCCESS`입니다. HTTP 204는 `ResponseEntity.noContent().build()`로 본문 없이 반환합니다.
+
+```java
+return ResponseEntity.status(201).body(BaseResponse.success(data));
+```
+
+업무 오류는 해당 `BaseErrorCode`를 선택해 `throw new BusinessException(ErrorCode.CONFLICT)`와 같이 전달합니다. 요청 DTO에는 Bean Validation 제약과 컨트롤러 인자의 `@Valid`를 사용합니다. 검증 오류의 `data.errors`에는 필드명과 사용자용 메시지가 담깁니다.
+
+```json
+{
+  "success": false,
+  "code": "COMMON_400",
+  "message": "입력값이 올바르지 않습니다.",
+  "data": {"errors": [{"field": "username", "message": "입력값이 올바르지 않습니다."}]}
+}
+```
+
+### 접근 정책과 CORS
+
+공개 헬스 체크와 smoke의 Swagger 경로를 제외한 요청에는 인증이 필요합니다. Security의 인증 실패와 접근 거부는 각각 `COMMON_401`, `COMMON_403` 응답을 사용합니다. CSRF 보호는 활성화되어 있습니다. 로그인 기능은 개발 예정이며, Spring Security의 BCrypt `PasswordEncoder` 빈을 이후 비밀번호 저장과 비교에 사용할 수 있습니다.
+
+브라우저에서 다른 Origin으로 호출하려면 `CORS_ALLOWED_ORIGINS`에 스킴, 호스트, 필요한 경우 포트를 포함한 Origin을 쉼표로 구분해 지정합니다. 기본 허용 목록은 비어 있으며, credential CORS 허용과 와일드카드는 사용하지 않습니다.
+
+### Swagger와 헬스 체크
+
+DB 연결 없이 문서를 확인하려면 `SPRING_PROFILES_ACTIVE=smoke ./gradlew bootRun`을 사용합니다.
+
+- Swagger UI는 `/swagger-ui/index.html`, OpenAPI JSON은 `/v3/api-docs`입니다. `components`에서 공통 응답 스키마와 400 입력 검증, 401 인증 실패, 403 접근 거부 예시를 확인할 수 있습니다.
+- `/actuator/health`에서 헬스 상태를 확인할 수 있습니다.
+- 운영 `prod` 프로필에서는 Swagger가 비활성화됩니다.
+
 ## 프로젝트 구조
 
 기능별 패키지(`domain`)와 공통 코드(`global`)로 구성합니다.
