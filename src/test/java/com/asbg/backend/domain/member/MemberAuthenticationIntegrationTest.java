@@ -1,21 +1,25 @@
 package com.asbg.backend.domain.member;
 
+import com.asbg.backend.domain.member.domain.Member;
 import com.asbg.backend.domain.member.domain.MemberPrincipal;
 import com.asbg.backend.domain.member.repository.MemberRepository;
 import com.asbg.backend.global.config.SessionStoreConfig;
 import com.asbg.backend.global.security.ActiveMemberSessions;
+import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Import;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.session.SessionRepository;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 import tools.jackson.databind.JsonNode;
@@ -32,10 +36,13 @@ import java.time.Duration;
 import java.util.Base64;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.doAnswer;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
         "spring.data.redis.host=127.0.0.1",
@@ -69,7 +76,7 @@ class MemberAuthenticationIntegrationTest {
     @Autowired
     private MemberRepository members;
 
-    @Autowired
+    @MockitoSpyBean
     private PasswordEncoder passwords;
 
     @Autowired
@@ -114,12 +121,35 @@ class MemberAuthenticationIntegrationTest {
     @Test
     void protectsDatabaseUniquenessUnderConcurrentRegistrations() throws Exception {
         String username = username();
+        String racePassword = "race1234!";
+        var beforeInsert = new CyclicBarrier(2);
+        // Password encoding runs after the existence check and before the insert.
+        doAnswer(invocation -> {
+            beforeInsert.await(5, TimeUnit.SECONDS);
+            return invocation.callRealMethod();
+        }).when(passwords).encode(racePassword);
+
         var responses = concurrently(
-                () -> new Browser().write("POST", REGISTER, credentials(username, PASSWORD)),
-                () -> new Browser().write("POST", REGISTER, credentials(username, PASSWORD)));
+                () -> new Browser().write("POST", REGISTER, credentials(username, racePassword)),
+                () -> new Browser().write("POST", REGISTER, credentials(username, racePassword)));
         assertThat(responses).extracting(HttpResponse::statusCode).containsExactlyInAnyOrder(201, 409);
         var conflict = responses.stream().filter(response -> response.statusCode() == 409).findFirst().orElseThrow();
         expect(conflict, 409, "MEMBER_409_1");
+        assertThat(jdbc.queryForObject("select count(*) from member where username = ?", Long.class, username))
+                .isEqualTo(1L);
+    }
+
+    @Test
+    void reportsTheMemberUsernameConstraintFromTheDatabase() throws Exception {
+        String username = register();
+        assertThatThrownBy(() -> members.saveAndFlush(new Member(username, passwords.encode(PASSWORD))))
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .cause().isInstanceOfSatisfying(ConstraintViolationException.class, constraint -> {
+                    assertThat(constraint.getSQLState()).isEqualTo("23505");
+                    assertThat(constraint.getConstraintName()).matches(
+                            "uk_member_username|PUBLIC\\.UK_MEMBER_USERNAME INDEX "
+                                    + "PUBLIC\\.UK_MEMBER_USERNAME_INDEX_[0-9]+");
+                });
     }
 
     @Test
@@ -273,7 +303,7 @@ class MemberAuthenticationIntegrationTest {
     void revokesAuthenticationOnForeignKeyConflictAndAllowsLoginAgain() throws Exception {
         String username = register();
         long memberId = members.findByUsername(username).orElseThrow().getMemberId();
-        jdbc.execute("create table auth_test_reference (id bigint primary key references members(member_id))");
+        jdbc.execute("create table auth_test_reference (id bigint primary key references member(member_id))");
         try {
             jdbc.update("insert into auth_test_reference values (?)", memberId);
             var browser = new Browser();

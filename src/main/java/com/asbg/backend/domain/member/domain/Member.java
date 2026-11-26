@@ -14,7 +14,7 @@ import java.time.LocalDateTime;
 import java.util.Locale;
 
 @Entity
-@Table(name = "members", uniqueConstraints = @UniqueConstraint(name = "uk_members_username", columnNames = "username"))
+@Table(name = "member", uniqueConstraints = @UniqueConstraint(name = "uk_member_username", columnNames = "username"))
 public class Member {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

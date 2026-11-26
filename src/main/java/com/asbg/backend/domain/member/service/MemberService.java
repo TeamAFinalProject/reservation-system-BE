@@ -78,9 +78,10 @@ public class MemberService {
         if (name == null || !"23505".equals(constraint.getSQLState())) {
             return false;
         }
+        // H2 can append the backing index name after the constraint name.
         String normalized = name.toLowerCase(Locale.ROOT).split("\\s", 2)[0];
-        return normalized.equals("uk_members_username")
-                || normalized.equals("public.uk_members_username")
-                || normalized.matches("public\\.uk_members_username_index_[0-9]+");
+        return normalized.equals("uk_member_username")
+                || normalized.equals("public.uk_member_username")
+                || normalized.matches("public\\.uk_member_username_index_[0-9]+");
     }
 }
