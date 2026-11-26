@@ -3,9 +3,10 @@ package com.asbg.backend.global.exception;
 import com.asbg.backend.global.presentation.BaseResponse;
 import com.asbg.backend.global.presentation.FieldErrorResponse;
 import com.asbg.backend.global.presentation.FieldErrorResponse.FieldError;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -14,17 +15,21 @@ import org.springframework.validation.method.ParameterErrors;
 import org.springframework.web.ErrorResponse;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
+@Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
-    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<BaseResponse<Void>> handleBusinessException(BusinessException exception) {
@@ -73,22 +78,37 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     public ResponseEntity<BaseResponse<Void>> handleException(Exception exception) {
         if (exception instanceof ErrorResponse response) {
-            HttpStatusCode status = response.getStatusCode();
-            if (!status.isError()) {
-                return ResponseEntity.status(status).headers(response.getHeaders()).build();
-            }
-            if (status.is5xxServerError()) {
-                logServerError(exception);
-            }
-            BaseErrorCode errorCode = Arrays.stream(ErrorCode.values())
-                    .filter(candidate -> candidate.status().value() == status.value())
-                    .findFirst()
-                    .<BaseErrorCode>map(candidate -> candidate)
-                    .orElseGet(() -> new FrameworkErrorCode(status));
-            return failure(errorCode, response.getHeaders());
+            return frameworkResponse(response.getStatusCode(), response.getHeaders(), exception);
         }
-        logServerError(exception);
-        return failure(ErrorCode.INTERNAL_SERVER_ERROR, HttpHeaders.EMPTY);
+        return frameworkResponse(findResponseStatus(exception), HttpHeaders.EMPTY, exception);
+    }
+
+    private HttpStatus findResponseStatus(Exception exception) {
+        Set<Throwable> visited = Collections.newSetFromMap(new IdentityHashMap<>());
+        for (Throwable cause = exception; cause != null && visited.add(cause); cause = cause.getCause()) {
+            ResponseStatus annotation = AnnotatedElementUtils.findMergedAnnotation(cause.getClass(), ResponseStatus.class);
+            if (annotation != null) {
+                return annotation.code();
+            }
+        }
+        return HttpStatus.INTERNAL_SERVER_ERROR;
+    }
+
+    private ResponseEntity<BaseResponse<Void>> frameworkResponse(
+            HttpStatusCode status, HttpHeaders headers, Exception exception
+    ) {
+        if (!status.isError()) {
+            return ResponseEntity.status(status).headers(headers).build();
+        }
+        if (status.is5xxServerError()) {
+            logServerError(exception);
+        }
+        BaseErrorCode errorCode = Arrays.stream(ErrorCode.values())
+                .filter(candidate -> candidate.status().value() == status.value())
+                .findFirst()
+                .<BaseErrorCode>map(candidate -> candidate)
+                .orElseGet(() -> new FrameworkErrorCode(status));
+        return failure(errorCode, headers);
     }
 
     private ResponseEntity<BaseResponse<FieldErrorResponse>> validationFailure(List<FieldError> errors) {
