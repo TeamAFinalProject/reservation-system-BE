@@ -1,6 +1,8 @@
 package com.asbg.backend.global.security;
 
 import com.asbg.backend.global.presentation.BaseResponse;
+import jakarta.servlet.DispatcherType;
+import jakarta.servlet.RequestDispatcher;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -19,6 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.http.HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS;
+import static org.springframework.http.HttpHeaders.ACCESS_CONTROL_ALLOW_HEADERS;
 import static org.springframework.http.HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN;
 import static org.springframework.http.HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS;
 import static org.springframework.http.HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD;
@@ -89,6 +92,17 @@ class SecurityConfigTest {
     }
 
     @Test
+    void allowsInternalErrorDispatchButRequiresAuthenticationForDirectErrorRequests() throws Exception {
+        mvc.perform(get("/error").with(request -> {
+                    request.setDispatcherType(DispatcherType.ERROR);
+                    request.setAttribute(RequestDispatcher.ERROR_STATUS_CODE, 500);
+                    return request;
+                }))
+                .andExpect(status().isInternalServerError());
+        mvc.perform(get("/error")).andExpect(status().isUnauthorized());
+    }
+
+    @Test
     void hashesPasswordsWithBcrypt() {
         String rawPassword = "example-password";
         String hash = passwordEncoder.encode(rawPassword);
@@ -109,9 +123,11 @@ class SecurityConfigTest {
                 .andExpect(header().doesNotExist(ACCESS_CONTROL_ALLOW_ORIGIN));
         mvc.perform(options("/security-test/protected").header(ORIGIN, ALLOWED_ORIGIN)
                         .header(ACCESS_CONTROL_REQUEST_METHOD, "POST")
-                        .header(ACCESS_CONTROL_REQUEST_HEADERS, "Content-Type, Authorization"))
+                        .header(ACCESS_CONTROL_REQUEST_HEADERS, "Content-Type, Authorization, X-Browser-Id, X-Admission-Token"))
                 .andExpect(status().isOk())
-                .andExpect(header().string(ACCESS_CONTROL_ALLOW_ORIGIN, ALLOWED_ORIGIN));
+                .andExpect(header().string(ACCESS_CONTROL_ALLOW_ORIGIN, ALLOWED_ORIGIN))
+                .andExpect(header().string(ACCESS_CONTROL_ALLOW_HEADERS,
+                        "Content-Type, Authorization, X-Browser-Id, X-Admission-Token"));
         mvc.perform(options("/security-test/protected").header(ORIGIN, BLOCKED_ORIGIN)
                         .header(ACCESS_CONTROL_REQUEST_METHOD, "POST"))
                 .andExpect(status().isForbidden())
