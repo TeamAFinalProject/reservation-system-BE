@@ -43,10 +43,6 @@ public class MemberService {
         }
     }
 
-    public boolean exists(long memberId) {
-        return members.existsById(memberId);
-    }
-
     public void verifyWithdrawalPassword(long memberId, String password) {
         Member member = members.findById(memberId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.UNAUTHORIZED));
@@ -58,6 +54,7 @@ public class MemberService {
     public void delete(long memberId) {
         try {
             members.deleteById(memberId);
+            members.flush();
         } catch (DataIntegrityViolationException exception) {
             ConstraintViolationException constraint = constraintViolation(exception);
             if (constraint != null && "23503".equals(constraint.getSQLState())) {
@@ -68,8 +65,12 @@ public class MemberService {
     }
 
     private ConstraintViolationException constraintViolation(DataIntegrityViolationException exception) {
-        return exception.getMostSpecificCause() instanceof ConstraintViolationException constraint ? constraint
-                : exception.getCause() instanceof ConstraintViolationException constraint ? constraint : null;
+        for (Throwable cause = exception.getCause(); cause != null; cause = cause.getCause()) {
+            if (cause instanceof ConstraintViolationException constraint) {
+                return constraint;
+            }
+        }
+        return null;
     }
 
     private boolean isUsernameConstraint(ConstraintViolationException constraint) {
@@ -77,8 +78,9 @@ public class MemberService {
         if (name == null || !"23505".equals(constraint.getSQLState())) {
             return false;
         }
-        String normalized = name.toLowerCase(Locale.ROOT);
+        String normalized = name.toLowerCase(Locale.ROOT).split("\\s", 2)[0];
         return normalized.equals("uk_members_username")
-                || normalized.startsWith("public.uk_members_username_index_");
+                || normalized.equals("public.uk_members_username")
+                || normalized.matches("public\\.uk_members_username_index_[0-9]+");
     }
 }

@@ -1,4 +1,13 @@
 spring:
+  data:
+    redis:
+      host: ${VALKEY_HOST:127.0.0.1}
+      port: ${VALKEY_PORT:6379}
+      password: ${VALKEY_PASSWORD:}
+      connect-timeout: 2s
+      timeout: 2s
+      ssl:
+        enabled: ${VALKEY_TLS:false}
   datasource:
     # 기본값을 두지 않음: 환경변수가 없으면 실행 시 바로 실패해서 설정 누락을 알 수 있음
     url: ${DB_URL}
@@ -10,3 +19,10 @@ spring:
     properties:
       hibernate:
         format_sql: true
+
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
+    disable-swagger-default-url: true

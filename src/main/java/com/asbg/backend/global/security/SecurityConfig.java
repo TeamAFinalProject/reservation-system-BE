@@ -1,5 +1,6 @@
 package com.asbg.backend.global.security;
 
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -11,6 +12,11 @@ import org.springframework.security.config.annotation.web.configurers.AbstractHt
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
+import org.springframework.security.web.context.SecurityContextRepository;
+import org.springframework.security.web.csrf.CsrfFilter;
+import org.springframework.security.web.csrf.CsrfTokenRepository;
+import org.springframework.security.web.csrf.HttpSessionCsrfTokenRepository;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -25,9 +31,18 @@ public class SecurityConfig {
             Environment environment,
             CorsConfigurationSource corsConfigurationSource,
             CustomAuthenticationEntryPoint entryPoint,
-            CustomAccessDeniedHandler accessDeniedHandler
+            CustomAccessDeniedHandler accessDeniedHandler,
+            SecurityContextRepository contextRepository,
+            CsrfTokenRepository csrfTokenRepository,
+            ObjectProvider<ActiveMemberSessions> memberSessions
     ) {
+        ActiveMemberSessions sessions = memberSessions.getIfAvailable();
+        if (sessions != null) {
+            http.addFilterBefore(new ActiveMemberSessionFilter(sessions), CsrfFilter.class);
+        }
         return http
+                .securityContext(context -> context.securityContextRepository(contextRepository))
+                .csrf(csrf -> csrf.csrfTokenRepository(csrfTokenRepository))
                 .cors(cors -> cors.configurationSource(corsConfigurationSource))
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .formLogin(AbstractHttpConfigurer::disable)
@@ -39,7 +54,11 @@ public class SecurityConfig {
                 .authorizeHttpRequests(requests -> {
                     requests.requestMatchers(HttpMethod.GET, "/actuator/health").permitAll();
                     requests.requestMatchers(HttpMethod.HEAD, "/actuator/health").permitAll();
-                    if (environment.acceptsProfiles(Profiles.of("smoke & !prod"))) {
+                    if (sessions != null) {
+                        requests.requestMatchers(HttpMethod.POST, "/api/members", "/api/auth/login").permitAll();
+                        requests.requestMatchers(HttpMethod.GET, "/api/auth/csrf").permitAll();
+                    }
+                    if (environment.acceptsProfiles(Profiles.of("(smoke | local) & !prod"))) {
                         String[] swaggerPaths = {"/v3/api-docs", "/v3/api-docs/**", "/v3/api-docs.yaml",
                                 "/swagger-ui.html", "/swagger-ui/**"};
                         requests.requestMatchers(HttpMethod.GET, swaggerPaths).permitAll();
@@ -51,13 +70,24 @@ public class SecurityConfig {
     }
 
     @Bean
+    SecurityContextRepository securityContextRepository() {
+        return new HttpSessionSecurityContextRepository();
+    }
+
+    @Bean
+    CsrfTokenRepository csrfTokenRepository() {
+        return new HttpSessionCsrfTokenRepository();
+    }
+
+    @Bean
     PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
     }
 
     @Bean
     CorsConfigurationSource corsConfigurationSource(
-            @Value("${app.cors.allowed-origins:}") List<String> configuredOrigins
+            @Value("${app.cors.allowed-origins:}") List<String> configuredOrigins,
+            ObjectProvider<ActiveMemberSessions> memberSessions
     ) {
         List<String> origins = configuredOrigins.stream()
                 .map(String::strip)
@@ -70,7 +100,8 @@ public class SecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(origins);
         configuration.setAllowedMethods(List.of("GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("Accept", "Authorization", "Content-Type"));
+        configuration.setAllowedHeaders(List.of("Accept", "Authorization", "Content-Type", "X-CSRF-TOKEN"));
+        configuration.setAllowCredentials(memberSessions.getIfAvailable() != null);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);

@@ -1,4 +1,13 @@
 spring:
+  data:
+    redis:
+      host: ${VALKEY_HOST}
+      port: ${VALKEY_PORT:6379}
+      password: ${VALKEY_PASSWORD:}
+      connect-timeout: 2s
+      timeout: 2s
+      ssl:
+        enabled: ${VALKEY_TLS:true}
   datasource:
     url: ${DB_URL}
     username: ${DB_USERNAME}

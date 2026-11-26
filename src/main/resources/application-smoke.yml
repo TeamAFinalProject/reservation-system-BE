@@ -11,3 +11,7 @@ springdoc:
   swagger-ui:
     enabled: true
     disable-swagger-default-url: true
+management:
+  health:
+    redis:
+      enabled: false
