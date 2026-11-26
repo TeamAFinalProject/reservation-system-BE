@@ -1,5 +1,6 @@
 package com.asbg.backend.global.security;
 
+import jakarta.servlet.DispatcherType;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -52,6 +53,7 @@ public class SecurityConfig {
                         .authenticationEntryPoint(entryPoint)
                         .accessDeniedHandler(accessDeniedHandler))
                 .authorizeHttpRequests(requests -> {
+                    requests.dispatcherTypeMatchers(DispatcherType.ERROR).permitAll();
                     requests.requestMatchers(HttpMethod.GET, "/actuator/health").permitAll();
                     requests.requestMatchers(HttpMethod.HEAD, "/actuator/health").permitAll();
                     if (sessions != null) {
@@ -100,7 +102,8 @@ public class SecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(origins);
         configuration.setAllowedMethods(List.of("GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("Accept", "Authorization", "Content-Type", "X-CSRF-TOKEN"));
+        configuration.setAllowedHeaders(List.of(
+                "Accept", "Authorization", "Content-Type", "X-Browser-Id", "X-Admission-Token", "X-CSRF-TOKEN"));
         configuration.setAllowCredentials(memberSessions.getIfAvailable() != null);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
