@@ -43,7 +43,7 @@ import static org.assertj.core.api.Assertions.assertThat;
         "spring.datasource.url=${AUTH_TEST_DB_URL:jdbc:h2:mem:member-auth;MODE=PostgreSQL;DB_CLOSE_DELAY=-1}",
         "spring.datasource.username=${AUTH_TEST_DB_USERNAME:sa}",
         "spring.datasource.password=${AUTH_TEST_DB_PASSWORD:}",
-        "app.auth.idle-timeout=3s",
+        "app.auth.idle-timeout=4s",
         "app.auth.absolute-timeout=8s",
         "app.cors.allowed-origins=https://frontend.example.test"
 })
@@ -194,7 +194,7 @@ class MemberAuthenticationIntegrationTest {
         String username = register();
         var first = new Browser();
         expect(first.write("POST", LOGIN, credentials(username, PASSWORD)), 200, "COMMON_SUCCESS");
-        Thread.sleep(3400);
+        Thread.sleep(4500);
         expect(first.get(PROTECTED), 401, "COMMON_401");
         expect(new Browser().write("POST", LOGIN, credentials(username, PASSWORD)), 200, "COMMON_SUCCESS");
     }
@@ -203,15 +203,28 @@ class MemberAuthenticationIntegrationTest {
     void expiresActiveSessionsAtAbsoluteDeadlineDespiteRepeatedLogin() throws Exception {
         String username = register();
         var browser = new Browser();
-        expect(browser.write("POST", LOGIN, credentials(username, PASSWORD)), 200, "COMMON_SUCCESS");
+        var login = browser.write("POST", LOGIN, credentials(username, PASSWORD));
+        expect(login, 200, "COMMON_SUCCESS");
         String original = browser.sessionId();
-        for (int step = 0; step < 3; step++) {
-            Thread.sleep(1900);
-            expect(browser.get(PROTECTED), 200, null);
-            expect(browser.write("POST", LOGIN, credentials(username, PASSWORD)), 200, "COMMON_SUCCESS");
-            assertThat(browser.sessionId()).isEqualTo(original);
+        long memberId = body(login).path("data").path("memberId").asLong();
+        String key = "asbg:auth:active:" + memberId;
+        long initialTtl = redis.getExpire(key, TimeUnit.MILLISECONDS);
+        Thread.sleep(500);
+        expect(browser.write("POST", LOGIN, credentials(username, PASSWORD)), 200, "COMMON_SUCCESS");
+        assertThat(browser.sessionId()).isEqualTo(original);
+        assertThat(redis.getExpire(key, TimeUnit.MILLISECONDS)).isBetween(1L, initialTtl - 300);
+
+        long deadline = System.nanoTime() + Duration.ofSeconds(12).toNanos();
+        while (Boolean.TRUE.equals(redis.hasKey(key)) && System.nanoTime() < deadline) {
+            var activity = browser.get(PROTECTED);
+            if (activity.statusCode() != 200) {
+                expect(activity, 401, "COMMON_401");
+                assertThat(redis.hasKey(key)).isFalse();
+                break;
+            }
+            Thread.sleep(300);
         }
-        Thread.sleep(2500);
+        assertThat(redis.hasKey(key)).isFalse();
         expect(browser.get(PROTECTED), 401, "COMMON_401");
         expect(new Browser().write("POST", LOGIN, credentials(username, PASSWORD)), 200, "COMMON_SUCCESS");
     }
