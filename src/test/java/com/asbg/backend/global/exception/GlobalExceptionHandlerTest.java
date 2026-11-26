@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -24,6 +25,7 @@ import static org.hamcrest.Matchers.hasItems;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.http.HttpStatus.NOT_ACCEPTABLE;
+import static org.springframework.http.HttpStatus.NOT_FOUND;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.http.MediaType.APPLICATION_XML;
 import static org.springframework.http.MediaType.TEXT_PLAIN;
@@ -94,6 +96,15 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
+    void preservesAnnotatedStatusOnExceptionAndCauseWithoutExposingReason() throws Exception {
+        for (String path : new String[]{"/sample/annotated", "/sample/wrapped"}) {
+            expectFailure(mvc.perform(get(path)), 404, "COMMON_404")
+                    .andExpect(jsonPath("$.data").value(nullValue()))
+                    .andExpect(content().string(not(containsString("internal detail"))));
+        }
+    }
+
+    @Test
     void hidesUnexpectedErrorDetails() throws Exception {
         expectFailure(mvc.perform(get("/sample/failure")), 500, "COMMON_500")
                 .andExpect(jsonPath("$.message").value("서버 내부 오류가 발생했습니다."))
@@ -106,6 +117,10 @@ class GlobalExceptionHandlerTest {
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.code").value(code))
                 .andExpect(jsonPath("$.message").isString());
+    }
+
+    @ResponseStatus(code = NOT_FOUND, reason = "internal detail")
+    static class SampleNotFoundException extends RuntimeException {
     }
 
     @RestController
@@ -133,6 +148,16 @@ class GlobalExceptionHandlerTest {
         @GetMapping("/sample/status")
         void status() {
             throw new ResponseStatusException(NOT_ACCEPTABLE, "internal detail");
+        }
+
+        @GetMapping("/sample/annotated")
+        void annotated() {
+            throw new SampleNotFoundException();
+        }
+
+        @GetMapping("/sample/wrapped")
+        void wrapped() {
+            throw new IllegalStateException(new SampleNotFoundException());
         }
 
         @GetMapping("/sample/failure")
