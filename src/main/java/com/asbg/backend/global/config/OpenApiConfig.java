@@ -13,9 +13,12 @@ import io.swagger.v3.oas.models.media.MediaType;
 import io.swagger.v3.oas.models.media.ObjectSchema;
 import io.swagger.v3.oas.models.media.Schema;
 import io.swagger.v3.oas.models.responses.ApiResponse;
+import io.swagger.v3.oas.models.security.SecurityScheme;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.util.List;
@@ -25,7 +28,8 @@ import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 @Configuration(proxyBeanMethods = false)
 public class OpenApiConfig {
     @Bean
-    OpenAPI reservationOpenApi(@Value("${spring.application.name}") String applicationName, JsonMapper jsonMapper) {
+    OpenAPI reservationOpenApi(@Value("${spring.application.name}") String applicationName, JsonMapper jsonMapper,
+                               Environment environment) {
         Components components = new Components();
         ModelConverters converters = ModelConverters.getInstance(true);
         converters.readAll(BaseResponse.class).forEach(components::addSchemas);
@@ -44,6 +48,13 @@ public class OpenApiConfig {
                 errorResponse(ErrorCode.UNAUTHORIZED, null, responseSchema, jsonMapper));
         components.addResponses("Forbidden",
                 errorResponse(ErrorCode.FORBIDDEN, null, responseSchema, jsonMapper));
+
+        if (environment.acceptsProfiles(Profiles.of(SessionStoreConfig.ENABLED_PROFILE))) {
+            components.addSecuritySchemes("sessionCookie", new SecurityScheme()
+                    .type(SecurityScheme.Type.APIKEY)
+                    .in(SecurityScheme.In.COOKIE)
+                    .name(SessionStoreConfig.SESSION_COOKIE));
+        }
 
         return new OpenAPI()
                 .info(new Info().title(applicationName + " API").version("1.0.0")

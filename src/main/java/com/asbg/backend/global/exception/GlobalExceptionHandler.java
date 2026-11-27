@@ -5,6 +5,9 @@ import com.asbg.backend.global.presentation.FieldErrorResponse;
 import com.asbg.backend.global.presentation.FieldErrorResponse.FieldError;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.annotation.AnnotatedElementUtils;
+import org.springframework.dao.QueryTimeoutException;
+import org.springframework.data.redis.RedisConnectionFailureException;
+import org.springframework.data.redis.RedisSystemException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
@@ -73,6 +76,15 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<BaseResponse<Void>> handleUnreadableBody(HttpMessageNotReadableException exception) {
         return failure(ErrorCode.INVALID_REQUEST_BODY, HttpHeaders.EMPTY);
+    }
+
+    @ExceptionHandler({
+            RedisConnectionFailureException.class,
+            RedisSystemException.class,
+            QueryTimeoutException.class
+    })
+    public ResponseEntity<BaseResponse<Void>> handleStoreUnavailable() {
+        return failure(ErrorCode.SERVICE_UNAVAILABLE, HttpHeaders.EMPTY);
     }
 
     @ExceptionHandler(Exception.class)
