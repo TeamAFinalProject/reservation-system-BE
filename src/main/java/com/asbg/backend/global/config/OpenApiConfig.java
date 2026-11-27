@@ -57,7 +57,8 @@ public class OpenApiConfig {
         }
 
         return new OpenAPI()
-                .info(new Info().title(applicationName + " API").description("실시간 대기열 기반 예약 시스템"))
+                .info(new Info().title(applicationName + " API").version("1.0.0")
+                        .description("실시간 대기열 기반 예약 시스템"))
                 .components(components);
     }
 
