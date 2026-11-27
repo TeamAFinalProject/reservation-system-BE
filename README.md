@@ -226,7 +226,7 @@ COMMIT;
 
 `ASBG_SESSION`은 Spring Session 기본 Base64 인코딩을 사용하는 HttpOnly 쿠키입니다. Path는 `/`, SameSite는 `Lax`, Secure는 prod에서 활성화됩니다. Spring Session 4.1.2의 Redis 세션 키는 `asbg:auth:session:sessions:<sessionId>`이며, `sessionAttr:SPRING_SECURITY_CONTEXT`에 Spring Security 인증이 JDK 직렬화로 저장됩니다. 인증 주체는 `MemberPrincipal(memberId, username)`이며 인증 자격 증명은 세션에 저장하지 않습니다. 이 저장 형식은 외부 공개 계약이 아니므로 Java 타입과 직렬화 호환성을 함께 검증해야 합니다.
 
-`asbg:auth:active:<memberId>`의 값은 활성 세션의 ID입니다. 보호 요청은 세션이 유효하며 키 소유자가 일치할 때 허용됩니다. Valkey의 원자적 획득과 소유자 일치 삭제, PostgreSQL 회원 행 잠금으로 로그인·탈퇴 경쟁을 조정합니다. 유휴 만료는 Spring Session에서 갱신되며 활성 키 TTL로 최초 로그인 기준 절대 만료를 제한합니다. 동일 세션 재로그인은 절대 만료 시간을 연장하지 않습니다.
+`asbg:auth:active:<memberId>`의 값은 활성 세션의 ID입니다. 로그인 처리 중에는 같은 키에 최대 10초 동안 `pending:<sessionId>`를 기록합니다. DB 트랜잭션이 커밋되어야 이 값이 활성 세션 ID로 바뀝니다. 보호 요청은 세션이 유효하며 키 소유자가 일치할 때 허용됩니다. Valkey의 원자적 획득과 소유자 일치 삭제, PostgreSQL 회원 행 잠금으로 로그인·탈퇴 경쟁을 조정합니다. 유휴 만료는 Spring Session에서 갱신되며 활성 키 TTL로 최초 로그인 기준 절대 만료를 제한합니다. 동일 세션 재로그인은 절대 만료 시간을 연장하지 않습니다.
 
 로그아웃은 활성 키를 폐기하고 세션을 삭제합니다. 탈퇴는 비밀번호 확인 후 같은 방식으로 인증을 먼저 폐기하고 회원을 삭제합니다. 삭제가 FK 등으로 실패하면 회원은 남고 다시 로그인할 수 있습니다. Valkey 접근이 실패하면 인증·상태 변경을 허용하지 않습니다. 이 순서는 DB와 Valkey 사이의 단일 트랜잭션을 전제하지 않습니다.
 

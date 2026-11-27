@@ -81,10 +81,22 @@ public class MemberSessionService {
             var context = SecurityContextHolder.createEmptyContext();
             context.setAuthentication(authenticated);
             contextRepository.saveContext(context, request, response);
-            SecurityContextHolder.setContext(context);
-            // The surrounding DB transaction holds a row lock until commit; failed commits must revoke the claim.
+            // Publish only after the DB transaction succeeds. A pending claim expires even if cleanup cannot reach Valkey.
             TransactionSynchronizationManager.registerSynchronization(
                     new TransactionSynchronization() {
+                        @Override
+                        public void afterCommit() {
+                            try {
+                                if (!activeSessions.confirm(identity.memberId(), sessionId)) {
+                                    throw new BusinessException(ErrorCode.SERVICE_UNAVAILABLE);
+                                }
+                                SecurityContextHolder.setContext(context);
+                            } catch (RuntimeException exception) {
+                                revokeFailedLogin(identity.memberId(), sessionId, request, exception);
+                                throw exception;
+                            }
+                        }
+
                         @Override
                         public void afterCompletion(int status) {
                             if (status != STATUS_COMMITTED) {
@@ -94,11 +106,7 @@ public class MemberSessionService {
                     });
             return new MemberResponse(member.getMemberId(), member.getUsername());
         } catch (RuntimeException exception) {
-            try {
-                revokeFailedLogin(identity.memberId(), sessionId, request);
-            } catch (RuntimeException cleanupFailure) {
-                exception.addSuppressed(cleanupFailure);
-            }
+            revokeFailedLogin(identity.memberId(), sessionId, request, exception);
             throw exception;
         }
     }
@@ -122,6 +130,17 @@ public class MemberSessionService {
             var session = request.getSession(false);
             if (session != null) {
                 session.invalidate();
+            }
+        }
+    }
+
+    private void revokeFailedLogin(long memberId, String sessionId, HttpServletRequest request,
+                                   RuntimeException failure) {
+        try {
+            revokeFailedLogin(memberId, sessionId, request);
+        } catch (RuntimeException cleanupFailure) {
+            if (failure != cleanupFailure) {
+                failure.addSuppressed(cleanupFailure);
             }
         }
     }

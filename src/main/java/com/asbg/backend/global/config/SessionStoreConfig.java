@@ -70,11 +70,13 @@ public class SessionStoreConfig {
                 if (httpResponse.isCommitted()) {
                     throw exception;
                 }
-                httpResponse.reset();
                 var unavailable = ErrorCode.SERVICE_UNAVAILABLE;
+                byte[] body = mapper.writeValueAsBytes(BaseResponse.failure(unavailable, null));
+                httpResponse.resetBuffer();
                 httpResponse.setStatus(unavailable.status().value());
                 httpResponse.setContentType(MediaType.APPLICATION_JSON_VALUE);
-                mapper.writeValue(httpResponse.getOutputStream(), BaseResponse.failure(unavailable, null));
+                httpResponse.setContentLength(body.length);
+                httpResponse.getOutputStream().write(body);
             }
         };
         var registration = new FilterRegistrationBean<>(filter);

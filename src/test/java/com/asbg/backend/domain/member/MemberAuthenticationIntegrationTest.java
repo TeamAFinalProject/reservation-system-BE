@@ -3,8 +3,10 @@ package com.asbg.backend.domain.member;
 import com.asbg.backend.domain.member.domain.Member;
 import com.asbg.backend.domain.member.domain.MemberPrincipal;
 import com.asbg.backend.domain.member.repository.MemberRepository;
+import com.asbg.backend.domain.member.service.MemberService;
 import com.asbg.backend.global.config.SessionStoreConfig;
 import com.asbg.backend.global.security.ActiveMemberSessions;
+import jakarta.servlet.http.HttpServletRequest;
 import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -13,13 +15,18 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.session.SessionRepository;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 import tools.jackson.databind.JsonNode;
@@ -39,10 +46,18 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.awaitility.Awaitility.await;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
+import static org.springframework.security.web.context.HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
         "spring.data.redis.host=127.0.0.1",
@@ -85,8 +100,14 @@ class MemberAuthenticationIntegrationTest {
     @Autowired
     private SessionRepository<?> sessions;
 
-    @Autowired
+    @MockitoSpyBean
     private ActiveMemberSessions activeSessions;
+
+    @MockitoSpyBean
+    private MemberService memberService;
+
+    @MockitoSpyBean
+    private SecurityContextRepository contextRepository;
 
     @Autowired
     private JdbcTemplate jdbc;
@@ -320,16 +341,44 @@ class MemberAuthenticationIntegrationTest {
     @Test
     void cannotLogInDuringWithdrawal() throws Exception {
         String username = register();
+        var member = members.findByUsername(username).orElseThrow();
+        long memberId = member.getMemberId();
         var first = new Browser();
         var second = new Browser();
         expect(first.write("POST", LOGIN, credentials(username, PASSWORD)), 200, "COMMON_SUCCESS");
         String firstToken = first.csrf();
         String secondToken = second.csrf();
-        var responses = concurrently(
-                () -> first.send("DELETE", WITHDRAW, password(PASSWORD), firstToken),
-                () -> second.send("POST", LOGIN, credentials(username, PASSWORD), secondToken));
-        assertThat(responses.getFirst().statusCode()).isEqualTo(204);
-        assertThat(responses.getLast().statusCode()).isIn(401, 409);
+        var revoked = new CountDownLatch(1);
+        var loginVerifiedPassword = new CountDownLatch(1);
+        var allowDeletion = new CountDownLatch(1);
+        doAnswer(invocation -> {
+            revoked.countDown();
+            assertThat(allowDeletion.await(5, TimeUnit.SECONDS)).isTrue();
+            return invocation.callRealMethod();
+        }).when(memberService).delete(memberId);
+        doAnswer(invocation -> {
+            Object matched = invocation.callRealMethod();
+            if (revoked.getCount() == 0) {
+                loginVerifiedPassword.countDown();
+            }
+            return matched;
+        }).when(passwords).matches(PASSWORD, member.getPassword());
+
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            var withdrawal = executor.submit(() -> first.send("DELETE", WITHDRAW, password(PASSWORD), firstToken));
+            try {
+                assertThat(revoked.await(5, TimeUnit.SECONDS)).isTrue();
+                assertThat(redis.hasKey("asbg:auth:active:" + memberId)).isFalse();
+                var login = executor.submit(() -> second.send("POST", LOGIN, credentials(username, PASSWORD), secondToken));
+                assertThat(loginVerifiedPassword.await(5, TimeUnit.SECONDS)).isTrue();
+                assertThatThrownBy(() -> login.get(300, TimeUnit.MILLISECONDS)).isInstanceOf(TimeoutException.class);
+                allowDeletion.countDown();
+                expectEmpty(withdrawal.get(5, TimeUnit.SECONDS));
+                expect(login.get(5, TimeUnit.SECONDS), 401, "MEMBER_401_1");
+            } finally {
+                allowDeletion.countDown();
+            }
+        }
         assertThat(members.findByUsername(username)).isEmpty();
         expect(first.get(PROTECTED), 401, "COMMON_401");
         expect(second.get(PROTECTED), 401, "COMMON_401");
@@ -347,6 +396,81 @@ class MemberAuthenticationIntegrationTest {
         var denied = browser.preflight("https://unlisted.example.test");
         assertThat(denied.statusCode()).isEqualTo(403);
         assertThat(denied.headers().firstValue("Access-Control-Allow-Origin")).isEmpty();
+    }
+
+    @Test
+    void preservesCorsHeadersWhenActiveSessionLookupFails() throws Exception {
+        String username = register();
+        var browser = new Browser();
+        var login = browser.write("POST", LOGIN, credentials(username, PASSWORD));
+        expect(login, 200, "COMMON_SUCCESS");
+        long memberId = body(login).path("data").path("memberId").asLong();
+        doThrow(new RedisConnectionFailureException("test outage"))
+                .when(activeSessions).isActive(memberId, browser.sessionId());
+
+        var failure = browser.send("GET", PROTECTED, null, null, ORIGIN);
+        expect(failure, 503, "COMMON_503");
+        assertThat(failure.headers().firstValue("Access-Control-Allow-Origin")).contains(ORIGIN);
+        assertThat(failure.headers().firstValue("Access-Control-Allow-Credentials")).contains("true");
+    }
+
+    @Test
+    void revokesStoredSessionWhenLoginTransactionRollsBack() throws Exception {
+        String username = register();
+        long memberId = members.findByUsername(username).orElseThrow().getMemberId();
+        var storedSessionId = new AtomicReference<String>();
+        var browser = new Browser();
+        doAnswer(invocation -> {
+            invocation.callRealMethod();
+            if (storedSessionId.get() == null) {
+                String sessionId = invocation.getArgument(1, HttpServletRequest.class).getSession().getId();
+                storedSessionId.set(sessionId);
+                var stored = sessions.findById(sessionId);
+                assertThat(stored).isNotNull();
+                var context = stored.<SecurityContext>getAttribute(SPRING_SECURITY_CONTEXT_KEY);
+                assertThat(context.getAuthentication().getPrincipal()).isInstanceOf(MemberPrincipal.class);
+                assertThat(activeSessions.isActive(memberId, sessionId)).isFalse();
+                TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                    @Override
+                    public void beforeCommit(boolean readOnly) {
+                        throw new IllegalStateException("test rollback");
+                    }
+                });
+            }
+            return null;
+        }).when(contextRepository).saveContext(any(), any(), any());
+
+        expect(browser.write("POST", LOGIN, credentials(username, PASSWORD)), 500, "COMMON_500");
+        assertThat(storedSessionId.get()).isNotNull();
+        assertThat(sessions.findById(storedSessionId.get())).isNull();
+        assertThat(redis.hasKey("asbg:auth:active:" + memberId)).isFalse();
+        expect(browser.get(PROTECTED), 401, "COMMON_401");
+        expect(browser.write("POST", LOGIN, credentials(username, PASSWORD)), 200, "COMMON_SUCCESS");
+    }
+
+    @Test
+    void expiresUnconfirmedClaimWhenStoreFailurePreventsRelease() throws Exception {
+        String username = register();
+        long memberId = members.findByUsername(username).orElseThrow().getMemberId();
+        String activeKey = "asbg:auth:active:" + memberId;
+        var failedSessionId = new AtomicReference<String>();
+        doAnswer(invocation -> {
+            if (failedSessionId.get() == null) {
+                failedSessionId.set(invocation.getArgument(1, HttpServletRequest.class).getSession().getId());
+                throw new RedisConnectionFailureException("test save outage");
+            }
+            return invocation.callRealMethod();
+        }).when(contextRepository).saveContext(any(), any(), any());
+        doThrow(new RedisConnectionFailureException("test release outage"))
+                .when(activeSessions).release(eq(memberId), anyString());
+
+        var browser = new Browser();
+        expect(browser.write("POST", LOGIN, credentials(username, PASSWORD)), 503, "COMMON_503");
+        assertThat(failedSessionId.get()).isNotNull();
+        assertThat(redis.hasKey(activeKey)).isTrue();
+        assertThat(activeSessions.isActive(memberId, failedSessionId.get())).isFalse();
+        await().atMost(Duration.ofSeconds(12)).until(() -> Boolean.FALSE.equals(redis.hasKey(activeKey)));
+        expect(browser.write("POST", LOGIN, credentials(username, PASSWORD)), 200, "COMMON_SUCCESS");
     }
 
     @Test
@@ -427,7 +551,14 @@ class MemberAuthenticationIntegrationTest {
         }
 
         HttpResponse<String> send(String method, String path, String payload, String token) throws Exception {
+            return send(method, path, payload, token, null);
+        }
+
+        HttpResponse<String> send(String method, String path, String payload, String token, String origin) throws Exception {
             var builder = HttpRequest.newBuilder(uri(path)).timeout(Duration.ofSeconds(10));
+            if (origin != null) {
+                builder.header("Origin", origin);
+            }
             if (token != null) {
                 builder.header("X-CSRF-TOKEN", token);
             }

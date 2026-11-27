@@ -15,8 +15,18 @@ import java.util.List;
 @Profile(SessionStoreConfig.ENABLED_PROFILE)
 public class ActiveMemberSessions {
     private static final String PREFIX = "asbg:auth:active:";
-    private static final RedisScript<Long> RELEASE = RedisScript.of("""
+    private static final String PENDING_PREFIX = "pending:";
+    private static final Duration PENDING_TIMEOUT = Duration.ofSeconds(10);
+    private static final RedisScript<Long> CONFIRM = RedisScript.of("""
             if redis.call('get', KEYS[1]) == ARGV[1] then
+                redis.call('psetex', KEYS[1], ARGV[3], ARGV[2])
+                return 1
+            end
+            return 0
+            """, Long.class);
+    private static final RedisScript<Long> RELEASE = RedisScript.of("""
+            local owner = redis.call('get', KEYS[1])
+            if owner == ARGV[1] or owner == ARGV[2] then
                 return redis.call('del', KEYS[1])
             end
             return 0
@@ -41,15 +51,20 @@ public class ActiveMemberSessions {
         String key = PREFIX + memberId;
         String existing = redis.opsForValue().get(key);
         if (existing != null) {
-            if (sessions.findById(existing) != null) {
+            if (existing.startsWith(PENDING_PREFIX) || sessions.findById(existing) != null) {
                 return false;
             }
             release(memberId, existing);
         }
-        return Boolean.TRUE.equals(redis.opsForValue().setIfAbsent(key, sessionId, absoluteTimeout));
+        return Boolean.TRUE.equals(redis.opsForValue().setIfAbsent(key, PENDING_PREFIX + sessionId, PENDING_TIMEOUT));
+    }
+
+    public boolean confirm(long memberId, String sessionId) {
+        return Long.valueOf(1).equals(redis.execute(CONFIRM, List.of(PREFIX + memberId),
+                PENDING_PREFIX + sessionId, sessionId, Long.toString(absoluteTimeout.toMillis())));
     }
 
     public void release(long memberId, String sessionId) {
-        redis.execute(RELEASE, List.of(PREFIX + memberId), sessionId);
+        redis.execute(RELEASE, List.of(PREFIX + memberId), sessionId, PENDING_PREFIX + sessionId);
     }
 }
